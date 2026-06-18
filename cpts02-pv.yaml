@@ -1,0 +1,98 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-storage
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: Immediate
+reclaimPolicy: Retain
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: cpts05-postgres-pv
+spec:
+  capacity:
+    storage: 20Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage
+  local:
+    path: /opt/cpts/data/postgres
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - vbox
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: cpts05-postgres-wal-pv
+spec:
+  capacity:
+    storage: 10Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage
+  local:
+    path: /opt/cpts/data/postgres-wal
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - vbox
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: cpts05-storage-init
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: cpts05-storage-init
+
+  template:
+    metadata:
+      labels:
+        app: cpts05-storage-init
+
+    spec:
+      hostPID: true
+
+      containers:
+      - name: init-storage
+        image: busybox:1.36
+        command:
+          - sh
+          - -c
+          - |
+            mkdir -p /host/opt/cpts/data/postgres
+            mkdir -p /host/opt/cpts/data/postgres-wal
+            chmod -R 777 /host/opt/cpts/data
+            sleep 3600
+
+        securityContext:
+          privileged: true
+
+        volumeMounts:
+        - name: host-root
+          mountPath: /host
+
+      volumes:
+      - name: host-root
+        hostPath:
+          path: /

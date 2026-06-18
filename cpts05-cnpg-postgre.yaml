@@ -1,0 +1,80 @@
+# ============================================================
+# BAGIAN 1: SECRET - Menyimpan kredensial login PostgreSQL
+# ============================================================
+ 
+apiVersion: v1                        # Versi API Kubernetes untuk resource dasar
+kind: Secret                          # Tipe resource: menyimpan data sensitif (password, token)
+metadata:
+  name: cpts05-postgres-secret        # Nama secret, akan dirujuk oleh Cluster di bawah
+  namespace: cpts-op                  # Namespace tempat secret ini disimpan
+ 
+type: kubernetes.io/basic-auth        # Tipe secret: username & password (format standar K8s)
+stringData:
+  username: cpts05admin               # Username untuk login ke PostgreSQL
+  password: C5pts05S3cur3P4ss!        # Password untuk login ke PostgreSQL
+ 
+---
+# ============================================================
+# BAGIAN 2: CLUSTER - Konfigurasi PostgreSQL via CloudNative-PG
+# ============================================================
+ 
+apiVersion: postgresql.cnpg.io/v1    # Versi API dari operator CloudNative-PG (CNPG)
+kind: Cluster                         # Tipe resource: cluster PostgreSQL yang dikelola CNPG
+metadata:
+  name: cpts05-postgres-cluster       # Nama cluster, dipakai sebagai identifier di Kubernetes
+  namespace: cpts-op                  # Namespace tempat cluster ini berjalan
+ 
+spec:
+ 
+  # --- Image & Jumlah Instance ---
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.6  # Image Docker PostgreSQL versi 16.6
+  instances: 1                        # Jumlah pod PostgreSQL yang dijalankan (1 = single node)
+ 
+  # --- Storage Utama (Data PostgreSQL) ---
+  storage:
+    storageClass: local-storage       # Pakai StorageClass bernama "local-storage" (disk lokal)
+    size: 20Gi                        # Ukuran storage untuk data utama: 20 GB
+    resizeInUseVolumes: true          # Izinkan resize volume meski sedang dipakai
+ 
+  # --- WAL Storage (Write-Ahead Log) ---
+  walStorage:
+    storageClass: local-storage       # Pakai StorageClass yang sama
+    size: 10Gi                        # Ukuran storage untuk WAL: 10 GB
+                                      # WAL = file log transaksi, penting untuk recovery & replikasi
+ 
+  # --- Bootstrap (Inisialisasi Database Pertama Kali) ---
+  bootstrap:
+    initdb:                           # Metode inisialisasi: buat database baru dari awal
+      database: appdb                 # Nama database yang dibuat saat pertama kali cluster jalan
+      owner: cpts05admin              # User pemilik database (harus sama dengan username di secret)
+      secret:
+        name: cpts05-postgres-secret  # Ambil password dari Secret yang didefinisikan di Bagian 1
+ 
+  # --- Konfigurasi Parameter PostgreSQL ---
+  postgresql:
+    parameters:
+      max_connections: "200"          # Maksimal 200 koneksi bersamaan ke database
+      shared_buffers: "256MB"         # Memori cache untuk data yang sering diakses: 256 MB
+      archive_mode: "off"             # Matikan fitur archiving WAL (tidak perlu backup WAL)
+ 
+  # --- Monitoring ---
+  monitoring:
+    enablePodMonitor: false           # Tidak mengaktifkan PodMonitor (tidak pakai Prometheus)
+ 
+  # --- Affinity (Penempatan Pod) ---
+  affinity:
+    enablePodAntiAffinity: false      # Tidak memaksa pod menyebar ke node berbeda
+                                      # (karena hanya 1 node: vbox)
+ 
+  # --- Resource CPU & Memory ---
+  resources:
+    requests:
+      memory: "512Mi"                 # Memori minimum yang diminta: 512 MB
+      cpu: "250m"                     # CPU minimum yang diminta: 0.25 core (250 milicore)
+    limits:
+      memory: "1Gi"                   # Memori maksimum yang boleh dipakai: 1 GB
+      cpu: "1"                        # CPU maksimum yang boleh dipakai: 1 core
+ 
+  # --- Strategi Update ---
+  primaryUpdateStrategy: unsupervised # Update PostgreSQL dilakukan otomatis tanpa perlu
+                                      # konfirmasi manual dari administrator

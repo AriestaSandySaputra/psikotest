@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    apps.kubernetes.io/name: cloudnative-pg
+  name: cpts-op
+---
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cpts
+  namespace: cpts-op
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cpts
+rules:
+  - apiGroups: ["apps",""]
+    resources: ["pods", "services", "deployment"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cpts
+subjects:
+  - kind: ServiceAccount
+    name: cpts
+    namespace: cpts-op
+roleRef:
+  kind: ClusterRole
+  name: cpts
+  apiGroup: rbac.authorization.k8s.io
+---
